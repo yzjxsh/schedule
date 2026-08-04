@@ -500,6 +500,90 @@
     .block .code{ font-size:0.85rem; }
     .block .room, .block .who{ font-size:0.68rem; }
   }
+
+  /* ============================================================
+     SUBJECT DETAIL BUBBLE
+     ============================================================ */
+  .block, table.legend tbody tr{ cursor:pointer; }
+  table.legend tbody tr:hover td{ background:var(--paper-2); }
+  table.legend tbody tr:focus-visible td{ background:var(--paper-2); }
+
+  .subject-modal-backdrop{
+    position:fixed; inset:0;
+    background:rgba(91,65,96,0.38);
+    backdrop-filter: blur(2px);
+    display:flex; align-items:center; justify-content:center;
+    padding: var(--space-2);
+    z-index:200;
+  }
+  .subject-modal-backdrop[hidden]{ display:none; }
+
+  .subject-modal-card{
+    background:var(--card);
+    border-radius:26px;
+    box-shadow: 0 18px 40px rgba(91,65,96,0.32), 0 4px 14px rgba(91,65,96,0.22);
+    width:min(420px, 100%);
+    max-height: min(560px, 88vh);
+    overflow-y:auto;
+    position:relative;
+    animation: subjectPop .18s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes subjectPop{
+    0%{ transform:scale(0.9); opacity:0; }
+    100%{ transform:scale(1); opacity:1; }
+  }
+  .subject-modal-head{
+    padding: var(--space-3) var(--space-3) var(--space-2);
+    color:#fff;
+    border-radius:26px 26px 0 0;
+    position:relative;
+  }
+  .subject-modal-code{
+    font-family:'Baloo 2',sans-serif; font-weight:800;
+    font-size:clamp(1.3rem,4vw,1.7rem);
+    margin:0;
+  }
+  .subject-modal-desc{
+    font-family:'Quicksand',sans-serif; font-weight:600;
+    font-size:0.85rem; opacity:0.95; margin:4px 0 0;
+  }
+  .subject-modal-close{
+    position:absolute; top:10px; right:10px;
+    width:32px; height:32px; border-radius:50%;
+    background:rgba(255,255,255,0.28); color:#fff; border:none;
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.1rem; line-height:1; cursor:pointer;
+  }
+  .subject-modal-close:hover{ background:rgba(255,255,255,0.42); }
+
+  .subject-modal-body{ padding: var(--space-2) var(--space-3) var(--space-3); }
+  .subject-modal-row{
+    display:flex; justify-content:space-between; gap:var(--space-2);
+    padding: 7px 0;
+    border-bottom:1px dashed var(--rule);
+    font-size:0.85rem;
+  }
+  .subject-modal-row:last-of-type{ border-bottom:none; }
+  .subject-modal-label{
+    font-weight:700; color:var(--ink-soft);
+    font-size:0.68rem; text-transform:uppercase; letter-spacing:0.5px;
+    flex-shrink:0; padding-top:2px;
+  }
+  .subject-modal-value{ text-align:right; }
+
+  .subject-modal-meetings{
+    margin-top: var(--space-1);
+  }
+  .subject-modal-meetings h4{
+    font-family:'Baloo 2',sans-serif; margin:0 0 6px; font-size:0.85rem; color:var(--maroon);
+  }
+  .subject-modal-meeting{
+    display:flex; justify-content:space-between; gap:var(--space-2);
+    font-size:0.8rem; padding:5px 10px; margin-bottom:5px;
+    background:var(--paper-2); border-radius:10px;
+  }
+  .subject-modal-meeting .day{ font-weight:700; }
+  .subject-modal-meeting .room{ color:var(--ink-soft); }
 </style>
 </head>
 <body>
@@ -581,6 +665,30 @@
       </table>
     </div>
   </main>
+</div>
+
+<div class="subject-modal-backdrop" id="subjectModalBackdrop" hidden>
+  <div class="subject-modal-card" id="subjectModalCard" role="dialog" aria-modal="true" aria-labelledby="subjectModalCode">
+    <div class="subject-modal-head" id="subjectModalHead">
+      <button class="subject-modal-close" id="subjectModalClose" type="button" aria-label="Close">✕</button>
+      <p class="subject-modal-code" id="subjectModalCode"></p>
+      <p class="subject-modal-desc" id="subjectModalDesc"></p>
+    </div>
+    <div class="subject-modal-body">
+      <div class="subject-modal-row">
+        <span class="subject-modal-label">Instructor</span>
+        <span class="subject-modal-value" id="subjectModalInstructor"></span>
+      </div>
+      <div class="subject-modal-row">
+        <span class="subject-modal-label">Lec / Lab units</span>
+        <span class="subject-modal-value" id="subjectModalUnits"></span>
+      </div>
+      <div class="subject-modal-meetings">
+        <h4>Class Schedule</h4>
+        <div id="subjectModalMeetings"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -714,6 +822,13 @@ function renderGrid(){
     if(span >= 3) inner += `<div class="room">${c.room||''}</div>`;
     if(span >= 2) inner += `<div class="who">${fmt12(c.start)}–${fmt12(c.end)}</div>`;
     block.innerHTML = inner;
+    block.setAttribute('role','button');
+    block.setAttribute('tabindex','0');
+    block.setAttribute('aria-label', subj.code+' details');
+    block.addEventListener('click', ()=> openSubjectModal(c.subjId));
+    block.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openSubjectModal(c.subjId); }
+    });
     if(isOngoing(c)){
       block.classList.add('ongoing');
       const badge = document.createElement('div');
@@ -777,12 +892,68 @@ function renderLegend(){
       <td class="num" data-label="Lab">${s.lab||''}</td>
       <td data-label="Instructor">${s.instructor}</td>
     `;
+    tr.setAttribute('tabindex','0');
+    tr.setAttribute('role','button');
+    tr.setAttribute('aria-label', s.code+' details');
+    tr.addEventListener('click', ()=> openSubjectModal(s.id));
+    tr.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openSubjectModal(s.id); }
+    });
     body.appendChild(tr);
   });
   document.getElementById('lecTotal').textContent = lecTotal;
   document.getElementById('labTotal').textContent = labTotal;
   document.getElementById('grandTotal').textContent = 'Total: '+(lecTotal+labTotal)+' units';
 }
+
+/* ---------- subject detail bubble ---------- */
+const subjectModalBackdrop = document.getElementById('subjectModalBackdrop');
+const subjectModalCard = document.getElementById('subjectModalCard');
+let lastFocusedEl = null;
+
+function openSubjectModal(subjId){
+  const subj = subjectById(subjId);
+  if(!subj) return;
+
+  document.getElementById('subjectModalHead').style.background = subj.color;
+  document.getElementById('subjectModalCode').textContent = subj.code;
+  document.getElementById('subjectModalDesc').textContent = subj.desc;
+  document.getElementById('subjectModalInstructor').textContent = subj.instructor || '—';
+
+  const units = [];
+  if(subj.lec) units.push(subj.lec+' lec');
+  if(subj.lab) units.push(subj.lab+' lab');
+  document.getElementById('subjectModalUnits').textContent = units.length ? units.join(' · ') : '—';
+
+  const meetings = classes
+    .filter(c=>c.subjId===subjId)
+    .sort((a,b)=> a.day-b.day || a.start.localeCompare(b.start))
+    .map(c=>`
+      <div class="subject-modal-meeting">
+        <span class="day">${DAYS[c.day]}</span>
+        <span>${fmt12(c.start)}–${fmt12(c.end)}</span>
+        <span class="room">${c.room||''}</span>
+      </div>
+    `).join('');
+  document.getElementById('subjectModalMeetings').innerHTML = meetings || '<p style="font-size:0.8rem;color:var(--ink-soft);margin:0;">No scheduled meetings.</p>';
+
+  lastFocusedEl = document.activeElement;
+  subjectModalBackdrop.hidden = false;
+  document.getElementById('subjectModalClose').focus();
+}
+
+function closeSubjectModal(){
+  subjectModalBackdrop.hidden = true;
+  if(lastFocusedEl && typeof lastFocusedEl.focus === 'function') lastFocusedEl.focus();
+}
+
+subjectModalBackdrop.addEventListener('click', (e)=>{
+  if(e.target === subjectModalBackdrop) closeSubjectModal();
+});
+document.getElementById('subjectModalClose').addEventListener('click', closeSubjectModal);
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape' && !subjectModalBackdrop.hidden) closeSubjectModal();
+});
 
 /* ---------- shrink the legend table to fit its box exactly (no clipped/hidden rows, no scroll) ---------- */
 function fitLegendTable(){
